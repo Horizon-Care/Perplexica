@@ -1,9 +1,10 @@
 [GENERAL]
 SIMILARITY_MEASURE = "cosine" # "cosine" or "dot"
 KEEP_ALIVE = "5m" # How long to keep Ollama models loaded into memory. (Instead of using -1 use "-1m")
+DEFAULT_LANGUAGE = "fr" # Default search language: en, fr, es, de, ja, zh-CN, pt, ar, ru, etc.
 
 [SEARCH]
-PROVIDER = "searxng" # Options: "searxng" or "google_custom_search"
+PROVIDER = "google_custom_search"
 
 [SEARCH.SEARXNG]
 API_URL = "" # SearxNG API URL - http://localhost:32768 or http://searxng:8080 (Docker)

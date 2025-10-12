@@ -15,6 +15,7 @@ interface Config {
   GENERAL: {
     SIMILARITY_MEASURE: string;
     KEEP_ALIVE: string;
+    DEFAULT_LANGUAGE: string;
   };
   SEARCH: {
     PROVIDER: string;
@@ -87,6 +88,11 @@ export const getSimilarityMeasure = () =>
   loadConfig().GENERAL.SIMILARITY_MEASURE;
 
 export const getKeepAlive = () => loadConfig().GENERAL.KEEP_ALIVE;
+
+export const getDefaultLanguage = () => {
+  const config = loadConfig();
+  return config.GENERAL?.DEFAULT_LANGUAGE || 'en';
+};
 
 export const getOpenaiApiKey = () => loadConfig().MODELS.OPENAI.API_KEY;
 

@@ -18,6 +18,7 @@ import LineOutputParser from '../outputParsers/lineOutputParser';
 import { getDocumentsFromLinks } from '../utils/documents';
 import { Document } from 'langchain/document';
 import { search } from './providers';
+import { getDefaultLanguage } from '../config';
 import path from 'node:path';
 import fs from 'node:fs';
 import computeSimilarity from '../utils/computeSimilarity';
@@ -219,7 +220,7 @@ class MetaSearchAgent implements MetaSearchAgentType {
           question = question.replace(/<think>.*?<\/think>/g, '');
 
           const res = await search(question, {
-            language: 'en',
+            language: getDefaultLanguage(),
             engines: this.config.activeEngines,
           });
 

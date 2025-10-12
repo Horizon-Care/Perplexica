@@ -1,4 +1,5 @@
 import { search } from '@/lib/search/providers';
+import { getDefaultLanguage } from '@/lib/config';
 
 const websitesForTopic = {
   tech: {
@@ -48,7 +49,7 @@ export const GET = async (req: Request) => {
                 await search(`site:${link} ${query}`, {
                   engines: ['bing news'],
                   pageno: 1,
-                  language: 'en',
+                  language: getDefaultLanguage(),
                 })
               ).results;
             }),
@@ -70,7 +71,7 @@ export const GET = async (req: Request) => {
           {
             engines: ['bing news'],
             pageno: 1,
-            language: 'en',
+            language: getDefaultLanguage(),
           },
         )
       ).results;
