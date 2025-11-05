@@ -60,6 +60,8 @@ const bodySchema = z.object({
   chatModel: chatModelSchema.optional().default({}),
   embeddingModel: embeddingModelSchema.optional().default({}),
   systemInstructions: z.string().nullable().optional().default(''),
+  prompt: z.string().optional(),
+  restrictToSites: z.array(z.string()).optional(),
 });
 
 type Message = z.infer<typeof messageSchema>;
@@ -324,7 +326,19 @@ export const POST = async (req: Request) => {
       );
     }
 
-    const stream = await handler.searchAndAnswer(
+    console.log(`[Prompt] Focus mode: ${body.focusMode}`);
+    if (body.prompt) {
+      const promptPreview = body.prompt.substring(0, 200);
+      console.log(
+        `[Prompt] Custom prompt provided (first 200 chars): ${promptPreview}${body.prompt.length > 200 ? '...' : ''}`,
+      );
+    }
+    if (body.restrictToSites && body.restrictToSites.length > 0) {
+      console.log(
+        `[Site Restriction] restrictToSites: ${JSON.stringify(body.restrictToSites)}`,
+      );
+    }
+    const { emitter: stream, promptUsed } = await handler.searchAndAnswer(
       message.content,
       history,
       llm,
@@ -332,11 +346,23 @@ export const POST = async (req: Request) => {
       body.optimizationMode,
       body.files,
       body.systemInstructions as string,
+      body.prompt,
+      body.restrictToSites,
     );
 
     const responseStream = new TransformStream();
     const writer = responseStream.writable.getWriter();
     const encoder = new TextEncoder();
+
+    // Send the prompt used at the beginning of the stream
+    writer.write(
+      encoder.encode(
+        JSON.stringify({
+          type: 'promptUsed',
+          data: promptUsed,
+        }) + '\n',
+      ),
+    );
 
     handleEmitterEvents(stream, writer, encoder, message.chatId);
     handleHistorySave(message, humanMessageId, body.focusMode, body.files);

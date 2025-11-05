@@ -46,5 +46,10 @@ API_URL = "" # LM Studio API URL - http://host.docker.internal:1234
 API_URL = "" # Lemonade API URL - http://host.docker.internal:8000
 API_KEY = "" # Optional API key for Lemonade
 
+[MODELS.OVH]
+API_KEY = "" # OVH AI Endpoints Access Token - Get from OVH AI Endpoints console
+API_URL = "" # OVH AI Endpoint base URL - e.g., https://oai.endpoints.kepler.ai.cloud.ovh.net/v1
+MODEL_NAME = "" # Model name to use - e.g., gpt-oss-120b
+
 [API_ENDPOINTS]
 SEARXNG = "" # DEPRECATED: Use [SEARCH.SEARXNG.API_URL] instead. Legacy support maintained for backward compatibility.

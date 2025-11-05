@@ -57,6 +57,11 @@ interface Config {
       API_URL: string;
       API_KEY: string;
     };
+    OVH: {
+      API_URL: string;
+      API_KEY: string;
+      MODEL_NAME: string;
+    };
     CUSTOM_OPENAI: {
       API_URL: string;
       API_KEY: string;
@@ -151,6 +156,12 @@ export const getLemonadeApiEndpoint = () =>
   loadConfig().MODELS.LEMONADE.API_URL;
 
 export const getLemonadeApiKey = () => loadConfig().MODELS.LEMONADE.API_KEY;
+
+export const getOvhApiEndpoint = () => loadConfig().MODELS.OVH.API_URL;
+
+export const getOvhApiKey = () => loadConfig().MODELS.OVH.API_KEY;
+
+export const getOvhModelName = () => loadConfig().MODELS.OVH.MODEL_NAME;
 
 const mergeConfigs = (current: any, update: any): any => {
   if (update === null || update === undefined) {

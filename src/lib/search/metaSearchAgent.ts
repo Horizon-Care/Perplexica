@@ -35,7 +35,9 @@ export interface MetaSearchAgentType {
     optimizationMode: 'speed' | 'balanced' | 'quality',
     fileIds: string[],
     systemInstructions: string,
-  ) => Promise<eventEmitter>;
+    customPrompt?: string,
+    restrictToSites?: string[],
+  ) => Promise<{ emitter: eventEmitter; promptUsed: string }>;
 }
 
 interface Config {
@@ -61,8 +63,13 @@ class MetaSearchAgent implements MetaSearchAgentType {
     this.config = config;
   }
 
-  private async createSearchRetrieverChain(llm: BaseChatModel) {
+  private async createSearchRetrieverChain(llm: BaseChatModel, restrictToSites?: string[]) {
     (llm as unknown as ChatOpenAI).temperature = 0;
+
+    // Log the retriever prompt being used
+    console.log('[Prompt] Using webSearchRetrieverPrompt:');
+    console.log(this.config.queryGeneratorPrompt);
+    console.log(`[Prompt] Few-shot examples count: ${this.config.queryGeneratorFewShots.length}`);
 
     return RunnableSequence.from([
       ChatPromptTemplate.fromMessages([
@@ -219,7 +226,14 @@ class MetaSearchAgent implements MetaSearchAgentType {
         } else {
           question = question.replace(/<think>.*?<\/think>/g, '');
 
-          const res = await search(question, {
+          // Apply SITE restrictions if provided and searchWeb is enabled
+          let searchQuery = question;
+          if (restrictToSites && restrictToSites.length > 0 && this.config.searchWeb) {
+            const siteRestrictions = restrictToSites.map(site => `site:${site}`).join(' OR ');
+            searchQuery = `${siteRestrictions} ${question}`;
+          }
+
+          const res = await search(searchQuery, {
             language: getDefaultLanguage(),
             engines: this.config.activeEngines,
           });
@@ -252,7 +266,16 @@ class MetaSearchAgent implements MetaSearchAgentType {
     embeddings: Embeddings,
     optimizationMode: 'speed' | 'balanced' | 'quality',
     systemInstructions: string,
+    customPrompt?: string,
+    restrictToSites?: string[],
   ) {
+    const promptToUse = customPrompt || this.config.responsePrompt;
+    
+    // Log the response prompt being used
+    console.log('[Prompt] Using response prompt (first 500 chars):');
+    console.log(promptToUse.substring(0, 500) + '...');
+    console.log(`[Prompt] Response prompt total length: ${promptToUse.length} characters`);
+
     return RunnableSequence.from([
       RunnableMap.from({
         systemInstructions: () => systemInstructions,
@@ -269,7 +292,7 @@ class MetaSearchAgent implements MetaSearchAgentType {
 
           if (this.config.searchWeb) {
             const searchRetrieverChain =
-              await this.createSearchRetrieverChain(llm);
+              await this.createSearchRetrieverChain(llm, restrictToSites);
 
             const searchRetrieverResult = await searchRetrieverChain.invoke({
               chat_history: processedHistory,
@@ -296,7 +319,7 @@ class MetaSearchAgent implements MetaSearchAgentType {
           .pipe(this.processDocs),
       }),
       ChatPromptTemplate.fromMessages([
-        ['system', this.config.responsePrompt],
+        ['system', promptToUse],
         new MessagesPlaceholder('chat_history'),
         ['user', '{query}'],
       ]),
@@ -485,8 +508,11 @@ class MetaSearchAgent implements MetaSearchAgentType {
     optimizationMode: 'speed' | 'balanced' | 'quality',
     fileIds: string[],
     systemInstructions: string,
+    customPrompt?: string,
+    restrictToSites?: string[],
   ) {
     const emitter = new eventEmitter();
+    const promptUsed = customPrompt || this.config.responsePrompt;
 
     const answeringChain = await this.createAnsweringChain(
       llm,
@@ -494,6 +520,8 @@ class MetaSearchAgent implements MetaSearchAgentType {
       embeddings,
       optimizationMode,
       systemInstructions,
+      customPrompt,
+      restrictToSites,
     );
 
     const stream = answeringChain.streamEvents(
@@ -508,7 +536,7 @@ class MetaSearchAgent implements MetaSearchAgentType {
 
     this.handleStream(stream, emitter);
 
-    return emitter;
+    return { emitter, promptUsed };
   }
 }
 

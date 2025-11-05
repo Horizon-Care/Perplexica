@@ -35,6 +35,8 @@ interface ChatRequestBody {
   history: Array<[string, string]>;
   stream?: boolean;
   systemInstructions?: string;
+  prompt?: string;
+  restrictToSites?: string[];
 }
 
 export const POST = async (req: Request) => {
@@ -118,7 +120,19 @@ export const POST = async (req: Request) => {
       return Response.json({ message: 'Invalid focus mode' }, { status: 400 });
     }
 
-    const emitter = await searchHandler.searchAndAnswer(
+    if (body.prompt) {
+      const promptPreview = body.prompt.substring(0, 200);
+      console.log(
+        `[Prompt] Custom prompt provided (first 200 chars): ${promptPreview}${body.prompt.length > 200 ? '...' : ''}`,
+      );
+    }
+    if (body.restrictToSites && body.restrictToSites.length > 0) {
+      console.log(
+        `[Site Restriction] restrictToSites: ${JSON.stringify(body.restrictToSites)}`,
+      );
+    }
+
+    const { emitter, promptUsed } = await searchHandler.searchAndAnswer(
       body.query,
       history,
       llm,
@@ -126,6 +140,8 @@ export const POST = async (req: Request) => {
       body.optimizationMode,
       [],
       body.systemInstructions || '',
+      body.prompt,
+      body.restrictToSites,
     );
 
     if (!body.stream) {
@@ -156,7 +172,9 @@ export const POST = async (req: Request) => {
           });
 
           emitter.on('end', () => {
-            resolve(Response.json({ message, sources }, { status: 200 }));
+            resolve(
+              Response.json({ message, sources, promptUsed }, { status: 200 }),
+            );
           });
 
           emitter.on('error', (error: any) => {
@@ -185,6 +203,15 @@ export const POST = async (req: Request) => {
             JSON.stringify({
               type: 'init',
               data: 'Stream connected',
+            }) + '\n',
+          ),
+        );
+
+        controller.enqueue(
+          encoder.encode(
+            JSON.stringify({
+              type: 'promptUsed',
+              data: promptUsed,
             }) + '\n',
           ),
         );

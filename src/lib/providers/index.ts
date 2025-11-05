@@ -50,6 +50,11 @@ import {
   loadLemonadeEmbeddingModels,
   PROVIDER_INFO as LemonadeInfo,
 } from './lemonade';
+import {
+  loadOvhChatModels,
+  loadOvhEmbeddingModels,
+  PROVIDER_INFO as OvhInfo,
+} from './ovh';
 
 export const PROVIDER_METADATA = {
   openai: OpenAIInfo,
@@ -62,6 +67,7 @@ export const PROVIDER_METADATA = {
   aimlapi: AimlApiInfo,
   lmstudio: LMStudioInfo,
   lemonade: LemonadeInfo,
+  ovh: OvhInfo,
   custom_openai: {
     key: 'custom_openai',
     displayName: 'Custom OpenAI',
@@ -91,6 +97,7 @@ export const chatModelProviders: Record<
   aimlapi: loadAimlApiChatModels,
   lmstudio: loadLMStudioChatModels,
   lemonade: loadLemonadeChatModels,
+  ovh: loadOvhChatModels,
 };
 
 export const embeddingModelProviders: Record<
@@ -104,6 +111,7 @@ export const embeddingModelProviders: Record<
   aimlapi: loadAimlApiEmbeddingModels,
   lmstudio: loadLMStudioEmbeddingsModels,
   lemonade: loadLemonadeEmbeddingModels,
+  ovh: loadOvhEmbeddingModels,
 };
 
 export const getAvailableChatModelProviders = async () => {

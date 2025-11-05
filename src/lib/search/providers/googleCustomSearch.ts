@@ -82,11 +82,35 @@ export class GoogleCustomSearchProvider implements SearchProvider {
 
       return { results, suggestions };
     } catch (error: any) {
-      if (error.response?.status === 429) {
+      // Log detailed error information for debugging
+      if (error.response) {
+        const status = error.response.status;
+        const errorData = error.response.data;
+        
+        console.error('[Google Custom Search] API Error Details:');
+        console.error('Status:', status);
+        console.error('Error Data:', JSON.stringify(errorData, null, 2));
+        console.error('Request URL:', url.toString().replace(apiKey, 'REDACTED'));
+        
+        if (status === 429) {
+          throw new Error(
+            'Google Custom Search API quota exceeded. Check your API limits.',
+          );
+        }
+        
+        if (status === 400) {
+          const errorMessage = errorData?.error?.message || errorData?.message || 'Bad Request';
+          const errorReason = errorData?.error?.errors?.[0]?.reason || 'unknown';
+          throw new Error(
+            `Google Custom Search API error (400): ${errorMessage} (Reason: ${errorReason}). Check your API key, CX, and ensure the Custom Search Engine API is enabled in Google Cloud Console.`,
+          );
+        }
+        
         throw new Error(
-          'Google Custom Search API quota exceeded. Check your API limits.',
+          `Google Custom Search API error (${status}): ${errorData?.error?.message || errorData?.message || error.message}`,
         );
       }
+      
       throw new Error(
         `Google Custom Search API error: ${error.message || 'Unknown error'}`,
       );
