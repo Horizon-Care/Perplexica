@@ -69,3 +69,5 @@ export const loadOvhEmbeddingModels = async () => {
     return {};
   }
 };
+
+
