@@ -2,17 +2,77 @@
 
 ## Overview
 
-Perplexica’s Search API makes it easy to use our AI-powered search engine. You can run different types of searches, pick the models you want to use, and get the most recent info. Follow the following headings to learn more about Perplexica's search API.
+Perplexica's Search API makes it easy to use our AI-powered search engine. You can run different types of searches, pick the models you want to use, and get the most recent info. Follow the following headings to learn more about Perplexica's search API.
 
-## Endpoint
+## Endpoints
 
-### **POST** `http://localhost:3000/api/search`
+Perplexica provides two endpoints for performing searches:
+
+### `/api/search` - Recommended for Most Use Cases
+
+**POST** `http://localhost:3000/api/search`
+
+This is the **recommended endpoint** for most use cases. It supports both streaming and non-streaming responses, making it flexible for different application needs.
+
+**Key Features:**
+- ✅ Supports both JSON (`stream: false`) and streaming (`stream: true`) responses
+- ✅ Supports custom prompts (`retrieverPrompt` and `responsePrompt`)
+- ✅ Simple request format with `query` field
+- ✅ Easier to parse and integrate
+
+**Use `/api/search` when:**
+- You want a simple JSON response (set `stream: false`)
+- You need custom prompts but prefer JSON responses
+- You're building a standard API integration
+- You want the most straightforward implementation
+
+### `/api/chat` - For Chat-Based Applications
+
+**POST** `http://localhost:3000/api/chat`
+
+This endpoint is designed for chat-based applications that require persistent conversation contexts and automatic message history management.
+
+**Key Features:**
+- ✅ Always returns streaming responses (event-stream format)
+- ✅ Supports custom prompts (`retrieverPrompt` and `responsePrompt`)
+- ✅ Requires `message` object with `messageId` and `chatId`
+- ✅ Automatically stores messages in database
+- ✅ Designed for multi-turn conversations
+
+**Use `/api/chat` when:**
+- You're building a chat interface with persistent conversations
+- You need automatic message history management
+- You want to leverage Perplexica's built-in chat storage
+- Your application can handle streaming responses (NDJSON format)
+
+**Note**: `/api/chat` always returns streaming responses. If you need a JSON response, use `/api/search` with `stream: false`.
+
+### Comparison Table
+
+| Feature | `/api/search` | `/api/chat` |
+|---------|--------------|-------------|
+| Response Format | JSON (default) or Streaming | Always Streaming (NDJSON) |
+| Request Format | Simple `query` field | Requires `message` object with `messageId` and `chatId` |
+| Custom Prompts | ✅ Supported | ✅ Supported |
+| Message Storage | ❌ Not automatic | ✅ Automatic (stores in database) |
+| Best For | API integrations, simple searches | Chat applications, multi-turn conversations |
+| Parsing Complexity | Simple (JSON) | More complex (NDJSON stream) |
+
+### Recommendation
+
+**For most use cases, use `/api/search` with `stream: false`**. It provides the simplest integration path and returns a clean JSON response that's easy to parse.
+
+The rest of this documentation focuses on the `/api/search` endpoint. For `/api/chat` specific details, refer to the Chat API documentation (if available) or check the endpoint's expected request/response format.
+
+---
+
+## `/api/search` Endpoint Details
 
 **Note**: Replace `3000` with any other port if you've changed the default PORT
 
 ### Request
 
-The API accepts a JSON object in the request body, where you define the focus mode, chat models, embedding models, and your query.
+The `/api/search` endpoint accepts a JSON object in the request body, where you define the focus mode, chat models, embedding models, and your query.
 
 #### Request Body Structure
 
@@ -34,6 +94,9 @@ The API accepts a JSON object in the request body, where you define the focus mo
     ["assistant", "I am doing well, how can I help you today?"]
   ],
   "systemInstructions": "Focus on providing technical details about Perplexica's architecture.",
+  "responsePrompt": "You are a technical expert. Answer in a concise format. Use context: {context}. Follow user instructions: {systemInstructions}. Current date: {date}",
+  "retrieverPrompt": "You are an AI question rephraser. Rephrase the follow-up question into a standalone search query. Return the question inside <question> XML block.",
+  "restrictToSites": ["example.com"],
   "stream": false
 }
 ```
@@ -64,7 +127,13 @@ The API accepts a JSON object in the request body, where you define the focus mo
 
 - **`query`** (string, required): The search query or question.
 
-- **`systemInstructions`** (string, optional): Custom instructions provided by the user to guide the AI's response. These instructions are treated as user preferences and have lower priority than the system's core instructions. For example, you can specify a particular writing style, format, or focus area.
+- **`systemInstructions`** (string, optional): Custom instructions provided by the user to guide the AI's response. These instructions are treated as user preferences and have lower priority than the system's core instructions. For example, you can specify a particular writing style, format, or focus area. These instructions are injected into the response prompt via the `{systemInstructions}` template variable.
+
+- **`responsePrompt`** (string, optional): Custom prompt that overrides the default response/answering prompt. Controls how the final answer is formatted and generated after context is retrieved. When provided, this completely replaces the default focus mode prompt template. You can use template variables: `{context}`, `{systemInstructions}`, `{query}`, and `{date}`. If not provided, the default prompt for the selected focus mode is used.
+
+- **`retrieverPrompt`** (string, optional): Custom prompt that overrides the default query retriever prompt. Controls how the user's query is parsed, rephrased, and what searches are performed. When provided, this completely replaces the default retriever prompt. The retriever prompt should return responses in XML format: questions in `<question>...</question>` tags, and URLs in `<links>...</links>` tags (one per line). You can use template variables: `{chat_history}` and `{query}`. If not provided, the default retriever prompt is used.
+
+- **`restrictToSites`** (array of strings, optional): Restricts web searches to specific domains. When provided, the search will only query results from the specified domains. For example, `["example.com", "docs.example.com"]` will only search within those domains. This only applies to focus modes that support web search.
 
 - **`history`** (array, optional): An array of message pairs representing the conversation history. Each pair consists of a role (either 'human' or 'assistant') and the message content. This allows the system to use the context of the conversation to refine results. Example:
 
@@ -114,6 +183,7 @@ Example of streamed response objects:
 
 ```
 {"type":"init","data":"Stream connected"}
+{"type":"promptUsed","data":"Your custom response prompt or default prompt..."}
 {"type":"sources","data":[{"pageContent":"...","metadata":{"title":"...","url":"..."}},...]}
 {"type":"response","data":"Perplexica is an "}
 {"type":"response","data":"innovative, open-source "}
@@ -124,6 +194,7 @@ Example of streamed response objects:
 Clients should process each line as a separate JSON object. The different message types include:
 
 - **`init`**: Initial connection message
+- **`promptUsed`**: The prompt template that was actually used for generating the response (either your custom `responsePrompt` or the default)
 - **`sources`**: All sources used for the response
 - **`response`**: Chunks of the generated answer text
 - **`done`**: Indicates the stream is complete
@@ -136,10 +207,51 @@ Clients should process each line as a separate JSON object. The different messag
   - `metadata`: Metadata about the source, including:
     - `title`: The title of the webpage.
     - `url`: The URL of the webpage.
+- **`promptUsed`** (string, in non-streaming responses): The prompt template that was actually used for generating the response. This will be your custom `responsePrompt` if provided, or the default prompt for the selected focus mode.
+
+### Custom Prompts
+
+Perplexica supports custom prompt overrides for both the query retrieval phase and the response generation phase:
+
+#### Response Prompt (`responsePrompt`)
+
+The response prompt controls how the final answer is formatted and generated. You can use these template variables:
+
+- `{context}` - The retrieved documents/context from search
+- `{systemInstructions}` - User-provided system instructions
+- `{query}` - The user's query (automatically inserted by the system)
+- `{date}` - Current date and time in ISO format (UTC)
+
+Example:
+```json
+{
+  "responsePrompt": "You are a technical expert. Answer in bullet points. Use context: {context}. Follow instructions: {systemInstructions}. Date: {date}"
+}
+```
+
+#### Retriever Prompt (`retrieverPrompt`)
+
+The retriever prompt controls how queries are parsed and rephrased before searching. You can use these template variables:
+
+- `{chat_history}` - Conversation history (formatted as string)
+- `{query}` - The user's current query
+
+The retriever prompt should return responses in XML format:
+- Questions in `<question>...</question>` tags
+- URLs in `<links>...</links>` tags (one per line)
+
+Example:
+```json
+{
+  "retrieverPrompt": "Always perform searches. Rephrase the question into a standalone query. Return in <question> XML block."
+}
+```
+
+For more detailed examples and testing instructions, see [TESTING_CUSTOM_PROMPTS.md](../TESTING_CUSTOM_PROMPTS.md).
 
 ### Error Handling
 
 If an error occurs during the search process, the API will return an appropriate error message with an HTTP status code.
 
-- **400**: If the request is malformed or missing required fields (e.g., no focus mode or query).
+- **400**: If the request is malformed or missing required fields (e.g., no focus mode or query), or if an invalid model is selected.
 - **500**: If an internal server error occurs during the search.

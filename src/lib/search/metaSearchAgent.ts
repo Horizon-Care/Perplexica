@@ -35,7 +35,8 @@ export interface MetaSearchAgentType {
     optimizationMode: 'speed' | 'balanced' | 'quality',
     fileIds: string[],
     systemInstructions: string,
-    customPrompt?: string,
+    customResponsePrompt?: string,
+    customRetrieverPrompt?: string,
     restrictToSites?: string[],
   ) => Promise<{ emitter: eventEmitter; promptUsed: string }>;
 }
@@ -63,17 +64,19 @@ class MetaSearchAgent implements MetaSearchAgentType {
     this.config = config;
   }
 
-  private async createSearchRetrieverChain(llm: BaseChatModel, restrictToSites?: string[]) {
+  private async createSearchRetrieverChain(
+    llm: BaseChatModel,
+    restrictToSites?: string[],
+    customRetrieverPrompt?: string,
+  ) {
     (llm as unknown as ChatOpenAI).temperature = 0;
 
-    // Log the retriever prompt being used
-    console.log('[Prompt] Using webSearchRetrieverPrompt:');
-    console.log(this.config.queryGeneratorPrompt);
-    console.log(`[Prompt] Few-shot examples count: ${this.config.queryGeneratorFewShots.length}`);
+    const retrieverPromptToUse =
+      customRetrieverPrompt || this.config.queryGeneratorPrompt;
 
     return RunnableSequence.from([
       ChatPromptTemplate.fromMessages([
-        ['system', this.config.queryGeneratorPrompt],
+        ['system', retrieverPromptToUse],
         ...this.config.queryGeneratorFewShots,
         [
           'user',
@@ -114,7 +117,6 @@ class MetaSearchAgent implements MetaSearchAgentType {
           let docs: Document[] = [];
 
           const linkDocs = await getDocumentsFromLinks({ links });
-
           const docGroups: Document[] = [];
 
           linkDocs.map((doc) => {
@@ -226,10 +228,15 @@ class MetaSearchAgent implements MetaSearchAgentType {
         } else {
           question = question.replace(/<think>.*?<\/think>/g, '');
 
-          // Apply SITE restrictions if provided and searchWeb is enabled
           let searchQuery = question;
-          if (restrictToSites && restrictToSites.length > 0 && this.config.searchWeb) {
-            const siteRestrictions = restrictToSites.map(site => `site:${site}`).join(' OR ');
+          if (
+            restrictToSites &&
+            restrictToSites.length > 0 &&
+            this.config.searchWeb
+          ) {
+            const siteRestrictions = restrictToSites
+              .map((site) => `site:${site}`)
+              .join(' OR ');
             searchQuery = `${siteRestrictions} ${question}`;
           }
 
@@ -266,15 +273,11 @@ class MetaSearchAgent implements MetaSearchAgentType {
     embeddings: Embeddings,
     optimizationMode: 'speed' | 'balanced' | 'quality',
     systemInstructions: string,
-    customPrompt?: string,
+    customResponsePrompt?: string,
+    customRetrieverPrompt?: string,
     restrictToSites?: string[],
   ) {
-    const promptToUse = customPrompt || this.config.responsePrompt;
-    
-    // Log the response prompt being used
-    console.log('[Prompt] Using response prompt (first 500 chars):');
-    console.log(promptToUse.substring(0, 500) + '...');
-    console.log(`[Prompt] Response prompt total length: ${promptToUse.length} characters`);
+    const promptToUse = customResponsePrompt || this.config.responsePrompt;
 
     return RunnableSequence.from([
       RunnableMap.from({
@@ -291,8 +294,11 @@ class MetaSearchAgent implements MetaSearchAgentType {
           let query = input.query;
 
           if (this.config.searchWeb) {
-            const searchRetrieverChain =
-              await this.createSearchRetrieverChain(llm, restrictToSites);
+            const searchRetrieverChain = await this.createSearchRetrieverChain(
+              llm,
+              restrictToSites,
+              customRetrieverPrompt,
+            );
 
             const searchRetrieverResult = await searchRetrieverChain.invoke({
               chat_history: processedHistory,
@@ -472,31 +478,42 @@ class MetaSearchAgent implements MetaSearchAgentType {
     stream: AsyncGenerator<StreamEvent, any, any>,
     emitter: eventEmitter,
   ) {
-    for await (const event of stream) {
-      if (
-        event.event === 'on_chain_end' &&
-        event.name === 'FinalSourceRetriever'
-      ) {
-        emitter.emit(
-          'data',
-          JSON.stringify({ type: 'sources', data: event.data.output }),
-        );
+    try {
+      for await (const event of stream) {
+        if (
+          event.event === 'on_chain_end' &&
+          event.name === 'FinalSourceRetriever'
+        ) {
+          emitter.emit(
+            'data',
+            JSON.stringify({ type: 'sources', data: event.data.output }),
+          );
+        }
+        if (
+          event.event === 'on_chain_stream' &&
+          event.name === 'FinalResponseGenerator'
+        ) {
+          emitter.emit(
+            'data',
+            JSON.stringify({ type: 'response', data: event.data.chunk }),
+          );
+        }
+        if (
+          event.event === 'on_chain_end' &&
+          event.name === 'FinalResponseGenerator'
+        ) {
+          emitter.emit('end');
+        }
       }
-      if (
-        event.event === 'on_chain_stream' &&
-        event.name === 'FinalResponseGenerator'
-      ) {
-        emitter.emit(
-          'data',
-          JSON.stringify({ type: 'response', data: event.data.chunk }),
-        );
-      }
-      if (
-        event.event === 'on_chain_end' &&
-        event.name === 'FinalResponseGenerator'
-      ) {
-        emitter.emit('end');
-      }
+    } catch (error: any) {
+      emitter.emit(
+        'error',
+        JSON.stringify({
+          type: 'error',
+          data:
+            error?.message || 'An error occurred while processing the stream',
+        }),
+      );
     }
   }
 
@@ -508,33 +525,56 @@ class MetaSearchAgent implements MetaSearchAgentType {
     optimizationMode: 'speed' | 'balanced' | 'quality',
     fileIds: string[],
     systemInstructions: string,
-    customPrompt?: string,
+    customResponsePrompt?: string,
+    customRetrieverPrompt?: string,
     restrictToSites?: string[],
   ) {
     const emitter = new eventEmitter();
-    const promptUsed = customPrompt || this.config.responsePrompt;
+    const promptUsed = customResponsePrompt || this.config.responsePrompt;
 
-    const answeringChain = await this.createAnsweringChain(
-      llm,
-      fileIds,
-      embeddings,
-      optimizationMode,
-      systemInstructions,
-      customPrompt,
-      restrictToSites,
-    );
+    try {
+      const answeringChain = await this.createAnsweringChain(
+        llm,
+        fileIds,
+        embeddings,
+        optimizationMode,
+        systemInstructions,
+        customResponsePrompt,
+        customRetrieverPrompt,
+        restrictToSites,
+      );
 
-    const stream = answeringChain.streamEvents(
-      {
-        chat_history: history,
-        query: message,
-      },
-      {
-        version: 'v1',
-      },
-    );
+      const stream = answeringChain.streamEvents(
+        {
+          chat_history: history,
+          query: message,
+        },
+        {
+          version: 'v1',
+        },
+      );
 
-    this.handleStream(stream, emitter);
+      this.handleStream(stream, emitter).catch((error: any) => {
+        emitter.emit(
+          'error',
+          JSON.stringify({
+            type: 'error',
+            data:
+              error?.message ||
+              'An error occurred while processing the request',
+          }),
+        );
+      });
+    } catch (error: any) {
+      emitter.emit(
+        'error',
+        JSON.stringify({
+          type: 'error',
+          data:
+            error?.message || 'An error occurred while initializing the search',
+        }),
+      );
+    }
 
     return { emitter, promptUsed };
   }

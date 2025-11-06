@@ -60,7 +60,8 @@ const bodySchema = z.object({
   chatModel: chatModelSchema.optional().default({}),
   embeddingModel: embeddingModelSchema.optional().default({}),
   systemInstructions: z.string().nullable().optional().default(''),
-  prompt: z.string().optional(),
+  responsePrompt: z.string().optional(),
+  retrieverPrompt: z.string().optional(),
   restrictToSites: z.array(z.string()).optional(),
 });
 
@@ -269,12 +270,12 @@ export const POST = async (req: Request) => {
         body.embeddingModel?.provider || Object.keys(embeddingModelProviders)[0]
       ];
     const embeddingModel =
-      embeddingProvider[
-        body.embeddingModel?.name || Object.keys(embeddingProvider)[0]
+      embeddingProvider?.[
+        body.embeddingModel?.name || Object.keys(embeddingProvider || {})[0]
       ];
 
     let llm: BaseChatModel | undefined;
-    let embedding = embeddingModel.model;
+    let embedding = embeddingModel?.model;
 
     if (body.chatModel?.provider === 'custom_openai') {
       llm = new ChatOpenAI({
@@ -327,11 +328,44 @@ export const POST = async (req: Request) => {
     }
 
     console.log(`[Prompt] Focus mode: ${body.focusMode}`);
-    if (body.prompt) {
-      const promptPreview = body.prompt.substring(0, 200);
-      console.log(
-        `[Prompt] Custom prompt provided (first 200 chars): ${promptPreview}${body.prompt.length > 200 ? '...' : ''}`,
-      );
+
+    // Validate and normalize response prompt
+    let normalizedResponsePrompt = body.responsePrompt;
+    if (body.responsePrompt) {
+      const trimmed = body.responsePrompt.trim();
+      if (trimmed.length === 0) {
+        console.log(
+          `❌ [Prompt] Custom response prompt provided but is empty/whitespace only - will use default prompt`,
+        );
+        normalizedResponsePrompt = undefined;
+      } else {
+        normalizedResponsePrompt = trimmed;
+        const promptPreview = normalizedResponsePrompt.substring(0, 200);
+        console.log(
+          `[Prompt] Custom response prompt provided (first 200 chars): ${promptPreview}${normalizedResponsePrompt.length > 200 ? '...' : ''}`,
+        );
+      }
+    }
+
+    // Validate and normalize retriever prompt
+    let normalizedRetrieverPrompt = body.retrieverPrompt;
+    if (body.retrieverPrompt) {
+      const trimmed = body.retrieverPrompt.trim();
+      if (trimmed.length === 0) {
+        console.log(
+          `❌ [Prompt] Custom retriever prompt provided but is empty/whitespace only - will use default prompt`,
+        );
+        normalizedRetrieverPrompt = undefined;
+      } else {
+        normalizedRetrieverPrompt = trimmed;
+        const retrieverPromptPreview = normalizedRetrieverPrompt.substring(
+          0,
+          200,
+        );
+        console.log(
+          `[Prompt] Custom retriever prompt provided (first 200 chars): ${retrieverPromptPreview}${normalizedRetrieverPrompt.length > 200 ? '...' : ''}`,
+        );
+      }
     }
     if (body.restrictToSites && body.restrictToSites.length > 0) {
       console.log(
@@ -346,7 +380,8 @@ export const POST = async (req: Request) => {
       body.optimizationMode,
       body.files,
       body.systemInstructions as string,
-      body.prompt,
+      normalizedResponsePrompt,
+      normalizedRetrieverPrompt,
       body.restrictToSites,
     );
 

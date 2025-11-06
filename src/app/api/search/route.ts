@@ -35,7 +35,8 @@ interface ChatRequestBody {
   history: Array<[string, string]>;
   stream?: boolean;
   systemInstructions?: string;
-  prompt?: string;
+  responsePrompt?: string;
+  retrieverPrompt?: string;
   restrictToSites?: string[];
 }
 
@@ -120,11 +121,40 @@ export const POST = async (req: Request) => {
       return Response.json({ message: 'Invalid focus mode' }, { status: 400 });
     }
 
-    if (body.prompt) {
-      const promptPreview = body.prompt.substring(0, 200);
-      console.log(
-        `[Prompt] Custom prompt provided (first 200 chars): ${promptPreview}${body.prompt.length > 200 ? '...' : ''}`,
-      );
+    // Validate and normalize response prompt
+    let normalizedResponsePrompt = body.responsePrompt;
+    if (body.responsePrompt) {
+      const trimmed = body.responsePrompt.trim();
+      if (trimmed.length === 0) {
+        console.log(
+          `❌ [Prompt] Custom response prompt provided but is empty/whitespace only - will use default prompt`,
+        );
+        normalizedResponsePrompt = undefined;
+      } else {
+        normalizedResponsePrompt = trimmed;
+        const promptPreview = normalizedResponsePrompt.substring(0, 200);
+        console.log(
+          `[Prompt] Custom response prompt provided (first 200 chars): ${promptPreview}${normalizedResponsePrompt.length > 200 ? '...' : ''}`,
+        );
+      }
+    }
+    
+    // Validate and normalize retriever prompt
+    let normalizedRetrieverPrompt = body.retrieverPrompt;
+    if (body.retrieverPrompt) {
+      const trimmed = body.retrieverPrompt.trim();
+      if (trimmed.length === 0) {
+        console.log(
+          `❌ [Prompt] Custom retriever prompt provided but is empty/whitespace only - will use default prompt`,
+        );
+        normalizedRetrieverPrompt = undefined;
+      } else {
+        normalizedRetrieverPrompt = trimmed;
+        const retrieverPromptPreview = normalizedRetrieverPrompt.substring(0, 200);
+        console.log(
+          `[Prompt] Custom retriever prompt provided (first 200 chars): ${retrieverPromptPreview}${normalizedRetrieverPrompt.length > 200 ? '...' : ''}`,
+        );
+      }
     }
     if (body.restrictToSites && body.restrictToSites.length > 0) {
       console.log(
@@ -140,7 +170,8 @@ export const POST = async (req: Request) => {
       body.optimizationMode,
       [],
       body.systemInstructions || '',
-      body.prompt,
+      normalizedResponsePrompt,
+      normalizedRetrieverPrompt,
       body.restrictToSites,
     );
 
@@ -159,9 +190,15 @@ export const POST = async (req: Request) => {
               if (parsedData.type === 'response') {
                 message += parsedData.data;
               } else if (parsedData.type === 'sources') {
+                console.log('[Search Route] Sources received:', JSON.stringify(parsedData.data, null, 2).substring(0, 500));
+                console.log('[Search Route] Sources type:', typeof parsedData.data);
+                console.log('[Search Route] Sources is array:', Array.isArray(parsedData.data));
+                console.log('[Search Route] Sources length:', parsedData.data?.length || 0);
                 sources = parsedData.data;
               }
             } catch (error) {
+              console.error('❌ [Search Route] Error parsing data:', error);
+              console.error('❌ [Search Route] Data that failed:', data);
               reject(
                 Response.json(
                   { message: 'Error parsing data' },
@@ -172,6 +209,10 @@ export const POST = async (req: Request) => {
           });
 
           emitter.on('end', () => {
+            console.log('[Search Route] Stream ended');
+            console.log('[Search Route] Final message length:', message.length);
+            console.log('[Search Route] Final sources:', JSON.stringify(sources, null, 2).substring(0, 500));
+            console.log('[Search Route] Final sources count:', sources?.length || 0);
             resolve(
               Response.json({ message, sources, promptUsed }, { status: 200 }),
             );
