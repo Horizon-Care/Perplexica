@@ -38,6 +38,8 @@ export interface MetaSearchAgentType {
     customResponsePrompt?: string,
     customRetrieverPrompt?: string,
     restrictToSites?: string[],
+    searchEngineCx?: string,
+    synthesize?: boolean,
   ) => Promise<{ emitter: eventEmitter; promptUsed: string }>;
 }
 
@@ -68,6 +70,7 @@ class MetaSearchAgent implements MetaSearchAgentType {
     llm: BaseChatModel,
     restrictToSites?: string[],
     customRetrieverPrompt?: string,
+    searchEngineCx?: string,
   ) {
     (llm as unknown as ChatOpenAI).temperature = 0;
 
@@ -243,6 +246,7 @@ class MetaSearchAgent implements MetaSearchAgentType {
           const res = await search(searchQuery, {
             language: getDefaultLanguage(),
             engines: this.config.activeEngines,
+            ...(searchEngineCx && { cx: searchEngineCx }),
           });
 
           const documents = res.results.map(
@@ -276,6 +280,7 @@ class MetaSearchAgent implements MetaSearchAgentType {
     customResponsePrompt?: string,
     customRetrieverPrompt?: string,
     restrictToSites?: string[],
+    searchEngineCx?: string,
   ) {
     const promptToUse = customResponsePrompt || this.config.responsePrompt;
 
@@ -298,6 +303,7 @@ class MetaSearchAgent implements MetaSearchAgentType {
               llm,
               restrictToSites,
               customRetrieverPrompt,
+              searchEngineCx,
             );
 
             const searchRetrieverResult = await searchRetrieverChain.invoke({
@@ -517,6 +523,62 @@ class MetaSearchAgent implements MetaSearchAgentType {
     }
   }
 
+  private async runSearchOnly(
+    message: string,
+    history: BaseMessage[],
+    llm: BaseChatModel,
+    embeddings: Embeddings,
+    optimizationMode: 'speed' | 'balanced' | 'quality',
+    fileIds: string[],
+    emitter: eventEmitter,
+    customRetrieverPrompt?: string,
+    restrictToSites?: string[],
+    searchEngineCx?: string,
+  ) {
+    try {
+      const processedHistory = formatChatHistoryAsString(history);
+
+      let docs: Document[] = [];
+      let query = message;
+
+      if (this.config.searchWeb) {
+        const searchRetrieverChain = await this.createSearchRetrieverChain(
+          llm,
+          restrictToSites,
+          customRetrieverPrompt,
+          searchEngineCx,
+        );
+
+        const result = await searchRetrieverChain.invoke({
+          chat_history: processedHistory,
+          query: message,
+        });
+
+        query = result.query;
+        docs = result.docs;
+      }
+
+      const sortedDocs = await this.rerankDocs(
+        query,
+        docs,
+        fileIds,
+        embeddings,
+        optimizationMode,
+      );
+
+      emitter.emit('data', JSON.stringify({ type: 'sources', data: sortedDocs }));
+      emitter.emit('end');
+    } catch (error: any) {
+      emitter.emit(
+        'error',
+        JSON.stringify({
+          type: 'error',
+          data: error?.message || 'An error occurred during search',
+        }),
+      );
+    }
+  }
+
   async searchAndAnswer(
     message: string,
     history: BaseMessage[],
@@ -528,9 +590,27 @@ class MetaSearchAgent implements MetaSearchAgentType {
     customResponsePrompt?: string,
     customRetrieverPrompt?: string,
     restrictToSites?: string[],
+    searchEngineCx?: string,
+    synthesize: boolean = true,
   ) {
     const emitter = new eventEmitter();
     const promptUsed = customResponsePrompt || this.config.responsePrompt;
+
+    if (!synthesize) {
+      this.runSearchOnly(
+        message,
+        history,
+        llm,
+        embeddings,
+        optimizationMode,
+        fileIds,
+        emitter,
+        customRetrieverPrompt,
+        restrictToSites,
+        searchEngineCx,
+      );
+      return { emitter, promptUsed };
+    }
 
     try {
       const answeringChain = await this.createAnsweringChain(
@@ -542,6 +622,7 @@ class MetaSearchAgent implements MetaSearchAgentType {
         customResponsePrompt,
         customRetrieverPrompt,
         restrictToSites,
+        searchEngineCx,
       );
 
       const stream = answeringChain.streamEvents(

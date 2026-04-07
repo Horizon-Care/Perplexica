@@ -38,6 +38,8 @@ interface ChatRequestBody {
   responsePrompt?: string;
   retrieverPrompt?: string;
   restrictToSites?: string[];
+  searchEngineCx?: string;
+  synthesize?: boolean;
 }
 
 export const POST = async (req: Request) => {
@@ -173,6 +175,8 @@ export const POST = async (req: Request) => {
       normalizedResponsePrompt,
       normalizedRetrieverPrompt,
       body.restrictToSites,
+      body.searchEngineCx,
+      body.synthesize,
     );
 
     if (!body.stream) {
