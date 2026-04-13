@@ -6,7 +6,7 @@ import { getAvailableEmbeddingModelProviders } from '@/lib/providers';
 import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf';
 import { DocxLoader } from '@langchain/community/document_loaders/fs/docx';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
-import { Document } from 'langchain/document';
+import { Document } from '@langchain/core/documents';
 
 interface FileRes {
   fileName: string;
