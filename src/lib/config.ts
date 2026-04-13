@@ -26,6 +26,9 @@ interface Config {
       API_KEY: string;
       CX: string;
     };
+    BRAVE_SEARCH: {
+      API_KEY: string;
+    };
   };
   MODELS: {
     OPENAI: {
@@ -130,6 +133,11 @@ export const getGoogleCustomSearchApiKey = () => {
 export const getGoogleCustomSearchCx = () => {
   const config = loadConfig();
   return config.SEARCH?.GOOGLE_CUSTOM_SEARCH?.CX || '';
+};
+
+export const getBraveSearchApiKey = () => {
+  const config = loadConfig();
+  return process.env.BRAVE_API_KEY || config.SEARCH?.BRAVE_SEARCH?.API_KEY || '';
 };
 
 export const getOllamaApiEndpoint = () => loadConfig().MODELS.OLLAMA.API_URL;

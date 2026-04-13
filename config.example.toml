@@ -12,6 +12,9 @@ API_URL = ""
 API_KEY = ""
 CX = ""
 
+[SEARCH.BRAVE_SEARCH]
+API_KEY = ""  # Or set BRAVE_API_KEY environment variable (env takes priority)
+
 [MODELS.OPENAI]
 API_KEY = ""
 

@@ -2,6 +2,7 @@ import { getSearchProvider } from '../../config';
 import type { SearchProvider, SearchOptions, SearchResponse } from './types';
 import { SearxngProvider } from './searxng';
 import { GoogleCustomSearchProvider } from './googleCustomSearch';
+import { BraveSearchProvider } from './braveSearch';
 
 let searchProviderInstance: SearchProvider | null = null;
 
@@ -17,6 +18,10 @@ export const getSearchProviderInstance = (): SearchProvider => {
       case 'google_custom_search':
       case 'google':
         searchProviderInstance = new GoogleCustomSearchProvider();
+        break;
+      case 'brave_search':
+      case 'brave':
+        searchProviderInstance = new BraveSearchProvider();
         break;
       case 'searxng':
       default:
